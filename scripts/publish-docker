@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+
+# TODO: Versioning
+
+USERNAME=voidxnull
+IMAGE=zeropool-faucet
+
+echo $USERNAME/$IMAGE:latest
+
+docker build -f ./Dockerfile -t $USERNAME/$IMAGE:latest . && \
+docker push $USERNAME/$IMAGE:latest

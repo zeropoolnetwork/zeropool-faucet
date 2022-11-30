@@ -1,0 +1,20 @@
+[package]
+name = "zeropool-faucet"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+anyhow = "1.0.66"
+axum = "0.6.1"
+tokio = { version = "1.22.0", features = ["full"] }
+tracing = "0.1.37"
+envy = "0.4.2"
+serde = "1.0.148"
+tracing-subscriber = "0.3.16"
+
+# near
+near-jsonrpc-client = "0.4.1"
+near-crypto = "0.15.0"
+near-primitives = "0.15.0"
+near-chain-configs = "0.15.0"
+near-jsonrpc-primitives = "0.15.0"

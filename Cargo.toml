@@ -11,6 +11,7 @@ tracing = "0.1.37"
 envy = "0.4.2"
 serde = "1.0.148"
 tracing-subscriber = "0.3.16"
+dotenv = "0.15.0"
 
 # near
 near-jsonrpc-client = "0.4.1"

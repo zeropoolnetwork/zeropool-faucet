@@ -5,27 +5,30 @@ use std::{
 
 use axum::{
     extract::{ConnectInfo, State},
-    http::StatusCode,
-    response::{IntoResponse, Response},
-    routing::post,
-    Router,
+    response::IntoResponse,
+    routing::{get, post},
+    Json, Router,
 };
+use serde::Serialize;
 use tokio::sync::RwLock;
 
-use crate::{cache::TtlCache, config::Config, near::NearClient};
+use crate::{cache::TtlCache, config::Config, error::*, near::NearClient};
 
 mod cache;
 mod config;
+mod error;
 mod near;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    dotenv::dotenv().ok();
     tracing_subscriber::fmt::init();
 
     let config = Config::init();
 
     let app = Router::new()
         .route("/near/:address", post(near))
+        .route("/info", get(info))
         .with_state(AppState::new(&config)?);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.server.port));
@@ -78,29 +81,15 @@ async fn near(
     Ok(())
 }
 
-enum AppError {
-    TooManyRequests,
-    Anyhow(anyhow::Error),
-}
-
-impl IntoResponse for AppError {
-    fn into_response(self) -> Response {
-        match self {
-            Self::Anyhow(err) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, format!("{}", err)).into_response()
-            }
-            Self::TooManyRequests => {
-                (StatusCode::TOO_MANY_REQUESTS, "Too many requests").into_response()
-            }
-        }
+async fn info() -> impl IntoResponse {
+    #[derive(Serialize)]
+    struct Info {
+        version: &'static str,
+        supported_networks: &'static [&'static str],
     }
-}
 
-impl<E> From<E> for AppError
-where
-    E: Into<anyhow::Error>,
-{
-    fn from(err: E) -> Self {
-        Self::Anyhow(err.into())
-    }
+    Json(Info {
+        version: env!("CARGO_PKG_VERSION"),
+        supported_networks: &["near"],
+    })
 }

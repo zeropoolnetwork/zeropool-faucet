@@ -16,7 +16,7 @@ pub struct NearConfig {
     pub rpc_url: String,
     pub account_id: String,
     pub secret_key: String,
-    pub amount: u128,
+    pub amount: String,
 }
 
 pub struct NearClient {

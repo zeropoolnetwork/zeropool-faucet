@@ -13,7 +13,7 @@ pub struct Config {
 #[derive(Debug, Clone, Deserialize)]
 pub struct ServerConfig {
     pub port: u16,
-    pub interval: Duration,
+    pub interval: u64,
 }
 
 impl Config {

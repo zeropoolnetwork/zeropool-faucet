@@ -1,10 +1,11 @@
 use std::{
     net::{IpAddr, SocketAddr},
     sync::Arc,
+    time::Duration,
 };
 
 use axum::{
-    extract::{ConnectInfo, State},
+    extract::{ConnectInfo, Path, State},
     response::IntoResponse,
     routing::{get, post},
     Json, Router,
@@ -27,7 +28,7 @@ async fn main() -> anyhow::Result<()> {
     let config = Config::init();
 
     let app = Router::new()
-        .route("/near/:address", post(near))
+        .route("/near/:to", post(near))
         .route("/info", get(info))
         .with_state(AppState::new(&config)?);
 
@@ -50,10 +51,11 @@ struct AppState {
 
 impl AppState {
     fn new(config: &Config) -> anyhow::Result<Self> {
+        let interval = Duration::from_millis(config.server.interval);
         Ok(Self {
             config: config.clone(),
-            addresses: Arc::new(RwLock::new(TtlCache::new(config.server.interval))),
-            ips: Arc::new(RwLock::new(TtlCache::new(config.server.interval))),
+            addresses: Arc::new(RwLock::new(TtlCache::new(interval))),
+            ips: Arc::new(RwLock::new(TtlCache::new(interval))),
             near_client: Arc::new(NearClient::new(&config.near)?),
         })
     }
@@ -62,17 +64,18 @@ impl AppState {
 async fn near(
     state: State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    to: String,
+    Path(to): Path<String>,
 ) -> Result<(), AppError> {
+    tracing::debug!("{}", to);
+
     if state.ips.read().await.contains(&addr.ip()) || state.addresses.read().await.contains(&to) {
         tracing::info!("Address {}, {} tried to request too often", addr, to);
         return Err(AppError::TooManyRequests);
     }
 
-    state
-        .near_client
-        .transfer(&to, state.config.near.amount)
-        .await?;
+    let amount = state.config.near.amount.parse()?;
+
+    state.near_client.transfer(&to, amount).await?;
 
     tracing::debug!("Updating cache for {} {}", addr.ip(), to);
     state.ips.write().await.add(addr.ip());

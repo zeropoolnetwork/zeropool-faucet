@@ -5,7 +5,7 @@ edition = "2021"
 
 [dependencies]
 anyhow = "1.0.66"
-axum = "0.6.1"
+axum = { version = "0.6.1", features = ["macros"] }
 tokio = { version = "1.22.0", features = ["full"] }
 tracing = "0.1.37"
 envy = "0.4.2"

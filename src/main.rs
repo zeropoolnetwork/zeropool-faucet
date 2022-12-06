@@ -1,8 +1,4 @@
-use std::{
-    net::{IpAddr, SocketAddr},
-    sync::Arc,
-    time::Duration,
-};
+use std::net::SocketAddr;
 
 use axum::{
     extract::{ConnectInfo, Path, State},
@@ -10,15 +6,15 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use serde::Serialize;
-use tokio::sync::RwLock;
+use serde::{Deserialize, Serialize};
 
-use crate::{cache::TtlCache, config::Config, error::*, near::NearClient};
+use crate::{config::Config, error::*, state::*};
 
 mod cache;
 mod config;
 mod error;
 mod near;
+mod state;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -41,36 +37,35 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-#[derive(Clone)]
-struct AppState {
-    config: Config,
-    addresses: Arc<RwLock<TtlCache<String>>>,
-    ips: Arc<RwLock<TtlCache<IpAddr>>>,
-    near_client: Arc<NearClient>,
+#[derive(Deserialize)]
+struct FaucetReq {
+    amount: String,
 }
 
-impl AppState {
-    fn new(config: &Config) -> anyhow::Result<Self> {
-        let interval = Duration::from_millis(config.server.interval);
-        Ok(Self {
-            config: config.clone(),
-            addresses: Arc::new(RwLock::new(TtlCache::new(interval))),
-            ips: Arc::new(RwLock::new(TtlCache::new(interval))),
-            near_client: Arc::new(NearClient::new(&config.near)?),
-        })
-    }
-}
-
+#[axum::debug_handler]
 async fn near(
     state: State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     Path(to): Path<String>,
+    Json(req_data): Json<FaucetReq>,
 ) -> Result<(), AppError> {
     tracing::debug!("{}", to);
 
-    if state.ips.read().await.contains(&addr.ip()) || state.addresses.read().await.contains(&to) {
-        tracing::info!("Address {}, {} tried to request too often", addr, to);
-        return Err(AppError::TooManyRequests);
+    let amount = req_data.amount.parse()?;
+
+    if !state
+        .near_cache
+        .read()
+        .await
+        .can_spend(&to, addr.ip(), amount)
+    {
+        tracing::info!(
+            "Address {}, {} tried to request funds over the limit ({})",
+            addr,
+            to,
+            amount,
+        );
+        return Err(AppError::LimitExceeded);
     }
 
     let amount = state.config.near.amount.parse()?;
@@ -78,8 +73,7 @@ async fn near(
     state.near_client.transfer(&to, amount).await?;
 
     tracing::debug!("Updating cache for {} {}", addr.ip(), to);
-    state.ips.write().await.add(addr.ip());
-    state.addresses.write().await.add(to);
+    state.near_cache.write().await.spend(to, addr.ip(), amount);
 
     Ok(())
 }

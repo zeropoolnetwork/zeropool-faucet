@@ -12,5 +12,13 @@ For a production setup, take a look at the `docker-compose.prod.yml` file.
 
 
 ## Endpoints
-`POST /near/:address` - transfer configured amount of tokens to the specified address.
+
+`POST /:chain/:address` - transfer configured amount of tokens to the specified address.
+### Request format:
+```json
+{
+    "amount": "1000000000000000000000000"
+}
+```
+
 `GET /info` - get information about the faucet.

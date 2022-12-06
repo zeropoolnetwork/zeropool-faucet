@@ -1,22 +1,37 @@
 use axum::{
     http::StatusCode,
     response::{IntoResponse, Response},
+    Json,
 };
+use serde::Serialize;
+
+#[derive(Serialize)]
+struct ErrorResp {
+    error: String,
+}
 
 pub enum AppError {
-    TooManyRequests,
+    LimitExceeded,
     Anyhow(anyhow::Error),
 }
 
 impl IntoResponse for AppError {
     fn into_response(self) -> Response {
         match self {
-            Self::Anyhow(err) => {
-                (StatusCode::INTERNAL_SERVER_ERROR, format!("{}", err)).into_response()
-            }
-            Self::TooManyRequests => {
-                (StatusCode::TOO_MANY_REQUESTS, "Too many requests").into_response()
-            }
+            Self::Anyhow(err) => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResp {
+                    error: err.to_string(),
+                }),
+            )
+                .into_response(),
+            Self::LimitExceeded => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResp {
+                    error: "Limit exceeded".to_owned(),
+                }),
+            )
+                .into_response(),
         }
     }
 }

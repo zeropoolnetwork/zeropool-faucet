@@ -1,5 +1,3 @@
-use std::time::Duration;
-
 use serde::Deserialize;
 
 use crate::near::NearConfig;

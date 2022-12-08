@@ -7,6 +7,7 @@ use axum::{
     Json, Router,
 };
 use serde::{Deserialize, Serialize};
+use tower_http::cors::{Any, CorsLayer};
 
 use crate::{config::Config, error::*, state::*};
 
@@ -23,10 +24,13 @@ async fn main() -> anyhow::Result<()> {
 
     let config = Config::init();
 
+    let cors = CorsLayer::new().allow_origin(Any).allow_headers(Any);
+
     let app = Router::new()
         .route("/near/:to", post(near))
         .route("/info", get(info))
-        .with_state(AppState::new(&config)?);
+        .with_state(AppState::new(&config)?)
+        .layer(cors);
 
     let addr = SocketAddr::from(([0, 0, 0, 0], config.server.port));
     tracing::info!("listening on {}", addr);

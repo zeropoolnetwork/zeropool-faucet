@@ -72,8 +72,6 @@ async fn near(
         return Err(AppError::LimitExceeded);
     }
 
-    let amount = state.config.near.amount.parse()?;
-
     state.near_client.transfer(&to, amount).await?;
 
     tracing::debug!("Updating cache for {} {}", addr.ip(), to);

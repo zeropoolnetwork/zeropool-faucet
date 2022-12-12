@@ -88,7 +88,7 @@ impl<K: Hash + Eq + Display + Clone, B: Balance> Cache<K, B> {
     pub fn can_spend(&self, key: K, amount: B) -> bool {
         self.map
             .get(&key)
-            .map(|entry| entry.remaining_value >= amount)
+            .map(|entry| entry.is_expired(self.ttl) || entry.remaining_value >= amount)
             .unwrap_or(true)
     }
 

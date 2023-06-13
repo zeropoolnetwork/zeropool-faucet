@@ -1,10 +1,8 @@
 use std::collections::HashMap;
 
-use serde::Deserialize;
-
 const DEFAULT_RESET_INTERVAL: u64 = 60000 * 60 * 24;
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum BackendConfig {
     Near(crate::clients::near::NearConfig),
 }

@@ -22,7 +22,15 @@ pub struct NearConfig {
 }
 
 #[derive(Debug, Clone, Deserialize)]
-pub struct Token {
+#[serde(tag = "type")]
+#[serde(rename_all = "snake_case")]
+pub enum Token {
+    Near(TokenConfig),
+    Ft(TokenConfig),
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TokenConfig {
     pub account_id: String,
     pub secret_key: String,
     pub limit: String,
@@ -46,6 +54,11 @@ impl NearClient {
 
         let mut tokens = HashMap::new();
         for token in &token_configs {
+            let token = match token {
+                Token::Near(token) => token,
+                Token::Ft(token) => token,
+            };
+
             let account_id = AccountId::from_str(&token.account_id)?;
             let secret_key = SecretKey::from_str(&token.secret_key)?;
             let signer = InMemorySigner::from_secret_key(account_id, secret_key);

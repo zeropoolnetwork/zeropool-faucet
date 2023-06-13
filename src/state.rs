@@ -2,7 +2,11 @@ use std::{collections::HashMap, sync::Arc, time::Duration};
 
 use tokio::sync::RwLock;
 
-use crate::{cache::AddrCache, clients::Client, config::Config};
+use crate::{
+    cache::AddrCache,
+    clients::{near::Token, Client},
+    config::{BackendConfig, Config},
+};
 
 type ChainName = String;
 type TokenAddress = String;
@@ -26,9 +30,13 @@ impl AppState {
         let mut chains = HashMap::new();
         for backend in &config.backends {
             match backend {
-                crate::config::BackendConfig::Near(config) => {
+                BackendConfig::Near(config) => {
                     let mut caches = HashMap::new();
                     for token in &config.tokens {
+                        let token = match token {
+                            Token::Near(token) => token,
+                            Token::Ft(token) => token,
+                        };
                         caches.insert(
                             token.account_id.clone(),
                             AddrCache::new(interval, token.limit.parse().unwrap()),

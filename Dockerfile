@@ -3,8 +3,8 @@ FROM rust:latest as build
 RUN apt-get update && apt-get install -y clang
 
 # Cache dependencies
-RUN USER=root cargo new --bin zeropool-faucet
-WORKDIR /zeropool-faucet
+WORKDIR /app
+RUN USER=root cargo init --bin --name zeropool-faucet
 COPY ./Cargo.lock ./Cargo.lock
 COPY ./Cargo.toml ./Cargo.toml
 RUN cargo build --release
@@ -17,6 +17,6 @@ RUN cargo build --release
 
 # Final image
 FROM rust:latest
-
-COPY --from=build /zeropool-faucet/target/release/zeropool-faucet .
+WORKDIR /app
+COPY --from=build /app/target/release/zeropool-faucet .
 CMD ["./zeropool-faucet"]

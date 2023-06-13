@@ -1,29 +1,54 @@
-use std::{sync::Arc, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 
-use near_primitives::types::Balance as NearBalance;
 use tokio::sync::RwLock;
 
-use crate::{cache::AddrCache, config::Config, near::NearClient};
+use crate::{cache::AddrCache, clients::Client, config::Config};
 
-pub type NearCache = AddrCache<NearBalance>;
+type ChainName = String;
+type TokenAddress = String;
 
 #[derive(Clone)]
 pub struct AppState {
     pub config: Config,
-    pub near_client: Arc<NearClient>,
-    pub near_cache: Arc<RwLock<NearCache>>,
+    pub chains: HashMap<ChainName, Backend>,
+}
+
+#[derive(Clone)]
+pub struct Backend {
+    pub client: Arc<dyn Client + Send + Sync>,
+    pub caches: Arc<RwLock<HashMap<TokenAddress, AddrCache>>>,
 }
 
 impl AppState {
     pub fn new(config: &Config) -> anyhow::Result<Self> {
-        let interval = Duration::from_millis(config.server.interval);
+        let interval = Duration::from_millis(config.reset_interval);
+
+        let mut chains = HashMap::new();
+        for backend in &config.backends {
+            match backend {
+                crate::config::BackendConfig::Near(config) => {
+                    let mut caches = HashMap::new();
+                    for token in &config.tokens {
+                        caches.insert(
+                            token.account_id.clone(),
+                            AddrCache::new(interval, token.limit.parse().unwrap()),
+                        );
+                    }
+
+                    chains.insert(
+                        "near".to_string(),
+                        Backend {
+                            client: Arc::new(crate::clients::near::NearClient::new(config)?),
+                            caches: Arc::new(RwLock::new(HashMap::new())),
+                        },
+                    );
+                }
+            }
+        }
+
         Ok(Self {
             config: config.clone(),
-            near_cache: Arc::new(RwLock::new(AddrCache::new(
-                interval,
-                config.near.amount.parse()?,
-            ))),
-            near_client: Arc::new(NearClient::new(&config.near)?),
+            chains,
         })
     }
 }

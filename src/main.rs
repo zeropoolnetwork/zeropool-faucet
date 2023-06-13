@@ -1,5 +1,6 @@
 use std::net::SocketAddr;
 
+use anyhow::anyhow;
 use axum::{
     extract::{ConnectInfo, Path, State},
     response::IntoResponse,
@@ -12,9 +13,9 @@ use tower_http::cors::{Any, CorsLayer};
 use crate::{config::Config, error::*, state::*};
 
 mod cache;
+mod clients;
 mod config;
 mod error;
-mod near;
 mod state;
 
 #[tokio::main]
@@ -27,12 +28,12 @@ async fn main() -> anyhow::Result<()> {
     let cors = CorsLayer::new().allow_origin(Any).allow_headers(Any);
 
     let app = Router::new()
-        .route("/near/:to", post(near))
+        .route("/:chain/:token/:to", post(mint))
         .route("/info", get(info))
         .with_state(AppState::new(&config)?)
         .layer(cors);
 
-    let addr = SocketAddr::from(([0, 0, 0, 0], config.server.port));
+    let addr = SocketAddr::from(([0, 0, 0, 0], config.port));
     tracing::info!("listening on {}", addr);
     axum::Server::bind(&addr)
         .serve(app.into_make_service_with_connect_info::<SocketAddr>())
@@ -47,35 +48,46 @@ struct FaucetReq {
 }
 
 #[axum::debug_handler]
-async fn near(
+async fn mint(
     state: State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    Path(to): Path<String>,
+    Path((chain, token, to)): Path<(String, String, String)>,
     Json(req_data): Json<FaucetReq>,
 ) -> Result<(), AppError> {
-    tracing::debug!("{}", to);
+    let amount_n = req_data.amount.parse()?;
 
-    let amount = req_data.amount.parse()?;
+    let chain = state
+        .chains
+        .get(&chain)
+        .ok_or_else(|| anyhow!("Unknown chain"))?;
 
-    if !state
-        .near_cache
+    if !chain
+        .caches
         .read()
         .await
-        .can_spend(&to, addr.ip(), amount)
+        .get(&token)
+        .ok_or_else(|| anyhow!("Unknown token"))?
+        .can_spend(&to, addr.ip(), amount_n)
     {
         tracing::info!(
             "Address {}, {} tried to request funds over the limit ({})",
             addr,
             to,
-            amount,
+            amount_n,
         );
         return Err(AppError::LimitExceeded);
     }
 
-    state.near_client.transfer(&to, amount).await?;
+    chain.client.transfer(&to, &token, &req_data.amount).await?;
 
     tracing::debug!("Updating cache for {} {}", addr.ip(), to);
-    state.near_cache.write().await.spend(to, addr.ip(), amount);
+    chain
+        .caches
+        .write()
+        .await
+        .get_mut(&token)
+        .ok_or_else(|| anyhow!("Unknown token"))?
+        .spend(&to, addr.ip(), amount_n);
 
     Ok(())
 }

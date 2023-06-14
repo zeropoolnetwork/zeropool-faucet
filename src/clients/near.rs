@@ -49,11 +49,8 @@ impl NearClient {
     pub fn new(config: &NearConfig) -> Result<Self> {
         let client = JsonRpcClient::connect(&config.rpc_url);
 
-        let token_configs: Vec<Token> =
-            serde_json::from_str(&std::fs::read_to_string("tokens.json")?)?;
-
         let mut tokens = HashMap::new();
-        for token in &token_configs {
+        for token in &config.tokens {
             let token = match token {
                 Token::Near(token) => token,
                 Token::Ft(token) => token,
@@ -124,7 +121,7 @@ impl Client for NearClient {
             signer_id: token_state.signer.account_id.clone(),
             public_key: token_state.signer.public_key.clone(),
             nonce: nonce + 1,
-            receiver_id: to.parse()?,
+            receiver_id: token.parse()?,
             block_hash,
             actions,
         };

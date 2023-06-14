@@ -47,7 +47,7 @@ impl AppState {
                         "near".to_string(),
                         Backend {
                             client: Arc::new(crate::clients::near::NearClient::new(config)?),
-                            caches: Arc::new(RwLock::new(HashMap::new())),
+                            caches: Arc::new(RwLock::new(caches)),
                         },
                     );
                 }

@@ -23,12 +23,12 @@ async fn main() -> anyhow::Result<()> {
     dotenv::dotenv().ok();
     tracing_subscriber::fmt::init();
 
-    let config = Config::init();
+    let config = Config::init()?;
 
     let cors = CorsLayer::new().allow_origin(Any).allow_headers(Any);
 
     let app = Router::new()
-        .route("/:chain/:token/:to", post(mint))
+        .route("/:chain/:token", post(mint))
         .route("/info", get(info))
         .with_state(AppState::new(&config)?)
         .layer(cors);
@@ -45,13 +45,14 @@ async fn main() -> anyhow::Result<()> {
 #[derive(Deserialize)]
 struct FaucetReq {
     amount: String,
+    to: String,
 }
 
 #[axum::debug_handler]
 async fn mint(
     state: State<AppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
-    Path((chain, token, to)): Path<(String, String, String)>,
+    Path((chain, token)): Path<(String, String)>,
     Json(req_data): Json<FaucetReq>,
 ) -> Result<(), AppError> {
     let amount_n = req_data.amount.parse()?;
@@ -67,27 +68,30 @@ async fn mint(
         .await
         .get(&token)
         .ok_or_else(|| anyhow!("Unknown token"))?
-        .can_spend(&to, addr.ip(), amount_n)
+        .can_spend(&req_data.to, addr.ip(), amount_n)
     {
         tracing::info!(
             "Address {}, {} tried to request funds over the limit ({})",
             addr,
-            to,
+            req_data.to,
             amount_n,
         );
         return Err(AppError::LimitExceeded);
     }
 
-    chain.client.transfer(&to, &token, &req_data.amount).await?;
+    chain
+        .client
+        .transfer(&req_data.to, &token, &req_data.amount)
+        .await?;
 
-    tracing::debug!("Updating cache for {} {}", addr.ip(), to);
+    tracing::debug!("Updating cache for {} {}", addr.ip(), req_data.to);
     chain
         .caches
         .write()
         .await
         .get_mut(&token)
         .ok_or_else(|| anyhow!("Unknown token"))?
-        .spend(&to, addr.ip(), amount_n);
+        .spend(&req_data.to, addr.ip(), amount_n);
 
     Ok(())
 }

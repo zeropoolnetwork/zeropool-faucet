@@ -51,16 +51,16 @@ impl NearClient {
 
         let mut tokens = HashMap::new();
         for token in &config.tokens {
-            let token = match token {
-                Token::Near(token) => token,
-                Token::Ft(token) => token,
+            let (token, token_name) = match token {
+                Token::Near(token) => (token, "near".to_owned()),
+                Token::Ft(token) => (token, token.account_id.clone()),
             };
 
             let account_id = AccountId::from_str(&token.account_id)?;
             let secret_key = SecretKey::from_str(&token.secret_key)?;
             let signer = InMemorySigner::from_secret_key(account_id, secret_key);
 
-            tokens.insert(token.account_id.clone(), TokenState { signer });
+            tokens.insert(token_name, TokenState { signer });
         }
 
         Ok(Self { client, tokens })

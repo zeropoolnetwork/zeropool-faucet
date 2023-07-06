@@ -33,12 +33,13 @@ impl AppState {
                 BackendConfig::Near(config) => {
                     let mut caches = HashMap::new();
                     for token in &config.tokens {
-                        let token = match token {
-                            Token::Near(token) => token,
-                            Token::Ft(token) => token,
+                        let (token, token_name) = match token {
+                            Token::Near(token) => (token, "near".to_owned()),
+                            Token::Ft(token) => (token, token.account_id.clone()),
                         };
+
                         caches.insert(
-                            token.account_id.clone(),
+                            token_name,
                             AddrCache::new(interval, token.limit.parse().unwrap()),
                         );
                     }

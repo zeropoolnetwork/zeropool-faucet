@@ -97,8 +97,6 @@ impl Client for NearClient {
 
         let amount = amount.parse::<u128>()?;
 
-        let (nonce, block_hash) = self.get_nonce_and_hash(&token_state).await?;
-
         let actions = if token == "near" {
             vec![Action::Transfer(TransferAction { deposit: amount })]
         } else {
@@ -117,47 +115,58 @@ impl Client for NearClient {
             )]
         };
 
-        let transaction = Transaction {
-            signer_id: token_state.signer.account_id.clone(),
-            public_key: token_state.signer.public_key.clone(),
-            nonce: nonce + 1,
-            receiver_id: token.parse()?,
-            block_hash,
-            actions,
-        };
+        // TODO: retry on nonce conflict or invalid block hash
+        const MAX_RETRIES: usize = 5;
+        'main: for _ in 0..MAX_RETRIES {
+            let (nonce, block_hash) = self.get_nonce_and_hash(&token_state).await?;
 
-        let request = methods::broadcast_tx_commit::RpcBroadcastTxCommitRequest {
-            signed_transaction: transaction.sign(&token_state.signer),
-        };
+            let transaction = Transaction {
+                signer_id: token_state.signer.account_id.clone(),
+                public_key: token_state.signer.public_key.clone(),
+                nonce: nonce + 1,
+                receiver_id: token.parse()?,
+                block_hash,
+                actions: actions.clone(),
+            };
 
-        let response = self.client.call(request).await?;
-        tracing::info!(
-            "Transaction hash: {}, status: {:?}",
-            response.transaction.hash,
-            response.status
-        );
+            let request = methods::broadcast_tx_commit::RpcBroadcastTxCommitRequest {
+                signed_transaction: transaction.sign(&token_state.signer),
+            };
 
-        loop {
-            let res = self
-                .client
-                .call(methods::tx::RpcTransactionStatusRequest {
-                    transaction_info: methods::tx::TransactionInfo::TransactionId {
-                        hash: response.transaction.hash,
-                        account_id: token_state.signer.account_id.clone(),
-                    },
-                })
-                .await?;
-
-            match res.status {
-                FinalExecutionStatus::Failure(err) => {
-                    tracing::warn!("Transaction failed: {}", &err);
-                    return Err(anyhow!("{}", err));
+            let response = self.client.call(request).await;
+            let response = match response {
+                Ok(response) => response,
+                Err(err) => {
+                    tracing::warn!("Transaction failed (error), retrying. Error: {}", &err);
+                    continue;
                 }
-                FinalExecutionStatus::SuccessValue(_) => {
-                    tracing::info!("Transaction {} succeeded", &response.transaction.hash);
-                    break;
+            };
+
+            tracing::info!("Transaction {} successful", response.transaction.hash,);
+
+            const MAX_STATUS_RETRIES: usize = 5;
+            'res: for _ in 0..MAX_STATUS_RETRIES {
+                let res = self
+                    .client
+                    .call(methods::tx::RpcTransactionStatusRequest {
+                        transaction_info: methods::tx::TransactionInfo::TransactionId {
+                            hash: response.transaction.hash,
+                            account_id: token_state.signer.account_id.clone(),
+                        },
+                    })
+                    .await?;
+
+                match res.status {
+                    FinalExecutionStatus::Failure(err) => {
+                        tracing::warn!("Transaction failed (status), retrying. Error: {}", &err);
+                        break 'res;
+                    }
+                    FinalExecutionStatus::SuccessValue(_) => {
+                        tracing::info!("Transaction {} succeeded", &response.transaction.hash);
+                        break 'main;
+                    }
+                    _ => continue,
                 }
-                _ => continue,
             }
         }
 
